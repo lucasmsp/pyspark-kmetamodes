@@ -488,10 +488,11 @@ class IncrementalPartitionedKMetaModes:
                     return Row(**drow)
                 data_with_distances = data.repartition(partitions).rdd.map(lambda record: distance_to_all(record))
         """
-        def __init__(self, n_partitions, n_clusters, max_dist_iter, local_kmodes_iter, similarity="hamming", metamodessimilarity="hamming"):
+        def __init__(self, n_partitions, partition_size, n_clusters, max_dist_iter, local_kmodes_iter, similarity="hamming", metamodessimilarity="hamming"):
 
             self.n_clusters = n_clusters
             self.n_partitions = n_partitions
+	    self.partition_size = partition_size
             self.max_dist_iter = max_dist_iter
             self.local_kmodes_iter = local_kmodes_iter
             self.similarity = similarity
@@ -500,8 +501,13 @@ class IncrementalPartitionedKMetaModes:
         def calculate_metamodes(self, kmdata):
             """ Compute distributed k-modes clustering.
             """
+            # check partitioning parameters
+            if ((kmdata.count() // self.partition_size) < (self.n_partitions - 1)):
+                print("Warning: size x number of partitions is higher than the number of records in the data! Algorithm may fail due to empty partitions!")
+            if ((kmdata.count() // self.partition_size) > self.n_partitions):
+                print("Warning: size x number of partitions is much less than the number of records in the data! The last partition might be unproportionally big!")
             # repartition and convert to RDD
-            data_rdd = kmdata.repartition(self.n_partitions).rdd
+            data_rdd = kmdata.rdd.zipWithIndex().map(lambda (x,i): (i,x)).repartitionAndSortWithinPartitions(self.n_partitions,lambda x: x // self.partition_size, True).map(lambda (i,x): x)
             print(("Number of partitions: ",data_rdd.getNumPartitions()))
             rdd = data_rdd.map(lambda x: k_modes_record(x))
             print(("Number of partitions after converting to k-modes-records: ",rdd.getNumPartitions()))
