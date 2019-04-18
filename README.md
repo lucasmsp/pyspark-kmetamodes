@@ -29,7 +29,7 @@ max_iter=10
 fraction = 50000 * partitions / (data.count() * 1.0)
 data = data.rdd.sample(False,fraction).toDF()
 
-method=IncrementalPartitionedKMetaModes(n_partitions = partitions, n_clusters = n_modes,max_dist_iter = max_iter,local_kmodes_iter = max_iter, similarity = "frequency", metamodessimilarity = "hamming")
+method=IncrementalPartitionedKMetaModes(n_partitions = partitions, partition_size = 50000, n_clusters = n_modes,max_dist_iter = max_iter,local_kmodes_iter = max_iter, similarity = "frequency", metamodessimilarity = "hamming")
     	
 cluster_metamodes = method.calculate_metamodes(data)
 ```
