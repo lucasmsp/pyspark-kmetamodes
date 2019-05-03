@@ -1,6 +1,6 @@
 # Author: 'Marissa Saunders' <marissa.saunders@thinkbiganalytics.com> 
 # License: MIT
-# Author: 'Andrey Sapegin' <andrey@sapegin.org>
+# Author: 'Andrey Sapegin, Hasso Plattner Institute' <andrey.sapegin@hpi.de> <andrey@sapegin.org>
 
 from __future__ import division
 from copy import deepcopy
@@ -17,14 +17,15 @@ import math
 import time
 
 """
-Ensemble based incremental distributed K-modes clustering for PySpark
+Ensemble-based incremental distributed K-modes clustering for PySpark (Python 3), similar to the algorithm proposed by Visalakshi and Arunprabha in "Ensemble based Distributed K-Modes Clustering" (IJERD, March 2015) to perform K-modes clustering in an ensemble-based way.
 
-This module uses the algorithm proposed by Visalakshi and Arunprabha (IJERD, March 2015) to perform K-modes clustering in an ensemble-based way.
+In short, k-modes will be performed for each partition in order to identify a set of *modes* (of clusters) for each partition. Next, k-modes will be repeated to identify modes of a set of all modes from all partitions. These modes of modes are called *metamodes* here.
 
-K-modes clustering is performed on each partition of an rdd and the resulting clusters are collected to the driver node.
-Local K-modes clustering is then performed on the centroids returned from each partition to yield a final set of cluster centroids.
+This module uses several different distance functions for k-modes:
 
-Relies on an adaptation of the KModes package from https://github.com/nicodv/kmodes for the local iterations
+1) Hamming distance.
+2) Frequency-based dissimilarity proposed by He Z., Deng S., Xu X. in Improving K-Modes Algorithm Considering Frequencies of Attribute Values in Mode.
+3) My own (Andrey Sapegin) dissimilarity function, which is used for calculation of metamodes only. This distance function keeps track of and takes into account all frequencies of all unique values of all attributes in the cluster, and NOT only most frequent values that became the attributes of the mode/metamode.
 
 """
 
@@ -38,38 +39,39 @@ def get_max_value_key(dic):
 
 class Metamode:
     def __init__(self, mode):
-        # Initialisation of mode object
+        # Initialisation of metamode object
         self.attrs = deepcopy(mode.attrs)
-        # the mode is initialised without frequencies, it means that the cluster does not contain any elements yet.
-        # So, frequencies should be set to 0
+        # the metamode is initialised with frequencies, it means that the metamode will have 1 element right after initialisation.
+        # So, frequencies are copied from the mode
         self.attr_frequencies = deepcopy(mode.attr_frequencies)
         # The count and freq are different from frequencies of mode attributes.
         # They contain frequencies/counts for all values in the cluster,
         # and not just frequencies of the most frequent attributes (stored in the mode)
         self.count = deepcopy(mode.count)
         self.freq = deepcopy(mode.freq) # used only to calculate distance to modes
-        # Number of members (modes) of the cluster with this metamode, initially set to 1 (contains mode from which initialisation was done)
+        # Number of members (modes) of this metamode, initially set to 1 (contains mode from which initialisation was done)
         self.nmembers = 1
-	self.nrecords = deepcopy(mode.nmembers)
+	# number of all records in all modes of this metamode
+        self.nrecords = deepcopy(mode.nmembers)
 
     def calculate_freq(self):
         # create frequencies from counts by dividing each count on total number of values for corresponding attribute for corresponding cluster of this mode
         self.freq = [defaultdict(float) for _ in range(len(self.attrs))]
         for i in range(len(self.count)):
-            self.freq[i] = {k: v / self.nrecords for k, v in self.count[i].iteritems()}
+            self.freq[i] = {k: v / self.nrecords for k, v in self.count[i].items()}
 
     def add_member(self, mode):
-	self.nmembers += 1
-	self.nrecords += mode.nmembers
+        self.nmembers += 1
+        self.nrecords += mode.nmembers
         for i in range(len(self.count)):
             # sum and merge mode count to metamode count
             self.count[i] = { k: self.count[i].get(k, 0) + mode.count[i].get(k, 0) for k in set(self.count[i]) | set(mode.count[i]) }
     
     def subtract_member(self, mode):
-	self.nmembers -= 1
-	self.nrecords -= mode.nmembers
-	if (self.nmembers == 0):
-	    print("Warning! Last member removed from metamode! This situation should never happen in incremental k-modes!")
+        self.nmembers -= 1
+        self.nrecords -= mode.nmembers
+        if (self.nmembers == 0):
+            print("Warning! Last member removed from metamode! This situation should never happen in incremental k-modes!")
         for i in range(len(self.count)):
             # substract and merge mode count from metamode count
             self.count[i] = { k: self.count[i].get(k, 0) - mode.count[i].get(k, 0) for k in set(self.count[i]) | set(mode.count[i]) }
@@ -84,7 +86,7 @@ class Metamode:
 
         self.attrs = new_mode_attrs
         self.attr_frequencies = new_mode_attr_freqs
-	self.calculate_freq()
+        self.calculate_freq()
 
 class Mode:
     """
@@ -117,20 +119,20 @@ class Mode:
         # They contain frequencies/counts for all values in the cluster,
         # and not just frequencies of the most frequent attributes (stored in the mode)
         self.count = [defaultdict(int) for _ in range(len(self.attrs))]
-	for ind_attr, val_attr in enumerate(record):
+        for ind_attr, val_attr in enumerate(record):
             self.count[ind_attr][val_attr] += 1
         self.freq = None # used only to calculate distance to metamodes, will be initialised within a distance function
         # Number of members of the cluster with this mode, initially set to 1
         self.nmembers = 1
         # index contains the number of the metamode, initially mode does not belong to any metamode, so it is set to -1
         self.index = -1
-	self.mode_id = mode_id
+        self.mode_id = mode_id
 
     def calculate_freq(self):
         # create frequencies from counts by dividing each count on total number of values for corresponding attribute for corresponding cluster of this mode
         self.freq = [defaultdict(float) for _ in range(len(self.attrs))]
         for i in range(len(self.count)):
-            self.freq[i] = {k: v / self.nmembers for k, v in self.count[i].iteritems()}
+            self.freq[i] = {k: v / self.nmembers for k, v in self.count[i].items()}
 
     def add_member(self, record):
         self.nmembers += 1
@@ -220,12 +222,12 @@ def hamming_dissim(record, modes):
 def frequency_based_dissim(record, modes):
     """
     Frequency-based dissimilarity function
-    inspired by "Improving K-Modes Algorithm Considering Frequencies of Attribute Values in Mode" by Dong et al.
+    inspired by "Improving K-Modes Algorithm Considering Frequencies of Attribute Values in Mode" by He et al.
     """
     list_dissim = []
     for cluster_mode in modes:
         sum_dissim = 0
-        for i in xrange(len(record)): #zip(record,cluster_mode.mode):
+        for i in range(len(record)): #zip(record,cluster_mode.mode):
             #if (elem1 != elem2):
             if (record[i] != cluster_mode.attrs[i]):
                 sum_dissim += 1
@@ -249,7 +251,7 @@ def all_frequency_based_dissim_for_modes(mode, metamodes):
         ##if metamode.freq is None:
         ##    metamode.calculate_freq()
         # for each attribute in the mode
-        for i in xrange(len(mode.attrs)):
+        for i in range(len(mode.attrs)):
             X = mode.freq[i]
             Y = metamode.freq[i]
             # calculate Euclidean dissimilarity between two modes
@@ -277,8 +279,8 @@ class k_modes_record:
         self.record = record
         # index contains the number of the mode, initially record does not belong to any cluster, so it is set to -1
         self.index = -1
-	self.mode_id = -1
- 
+        self.mode_id = -1
+
     def update_cluster(self, clusters, similarity):
         # clusters contains a list of cluster objects.  This function calculates which cluster is closest to the
         # record contained in this object and changes the cluster to contain the index of this mode.
@@ -297,21 +299,21 @@ class k_modes_record:
             # First cycle through
             moved += 1
             self.index = new_cluster
-	    self.mode_id = clusters[new_cluster].mode_id
+            self.mode_id = clusters[new_cluster].mode_id
             clusters[new_cluster].add_member(self.record)
             clusters[new_cluster].update_mode()
         elif (self.index == new_cluster):
                 pass
         else: #self.index != new_cluster:
-	    if (diss[self.index] == 0.0):
-		raise Exception("Warning! Dissimilarity to old mode was 0, but new mode with the dissimilarity 0 also found! K-modes failed...")
+            if (diss[self.index] == 0.0):
+                raise Exception("Warning! Dissimilarity to old mode was 0, but new mode with the dissimilarity 0 also found! K-modes failed...")
             moved +=1
             clusters[self.index].subtract_member(self.record)
             clusters[self.index].update_mode()
             clusters[new_cluster].add_member(self.record)
             clusters[new_cluster].update_mode()
             self.index = new_cluster
-	    self.mode_id = clusters[new_cluster].mode_id
+            self.mode_id = clusters[new_cluster].mode_id
 
         return (self,clusters, moved)
 
@@ -333,24 +335,24 @@ def iter_k_modes(iterator, similarity):
 
     i = 0
     for element in iterator:
-	records = element[0]
-	partition_clusters = element[1]
-	partition_moved = element[2]
-	i += 1
+        records = element[0]
+        partition_clusters = element[1]
+        partition_moved = element[2]
+        i += 1
     if (i != 1):
-	raise Exception("More than 1 element in partition! This is not expected!")
+        raise Exception("More than 1 element in partition! This is not expected!")
 
     if (partition_moved == 0):
-	yield (records,partition_clusters,partition_moved)
+        yield (records,partition_clusters,partition_moved)
     else:
-	partition_records = []
-	partition_moved = 0
-	# iterator should contain only 1 list of records
-	for record in records:
+		partition_records = []
+		partition_moved = 0
+		# iterator should contain only 1 list of records
+		for record in records:
     	    new_record,partition_clusters, temp_move = record.update_cluster(partition_clusters,similarity)
-	    partition_records.append(new_record)
+		    partition_records.append(new_record)
     	    partition_moved += temp_move
-	yield (partition_records,partition_clusters,partition_moved)
+		yield (partition_records,partition_clusters,partition_moved)
 
 def select_random_modes(pindex,partition_records,n_modes):
     i = 0
@@ -383,15 +385,15 @@ def partition_to_list(pindex,iterator,n_modes):
 	    partition_clusters,failed,indexes = select_random_modes(pindex,partition_records,n_modes)
 	    # if modes were sucessfully selected, break the loop
 	    if (failed == 0):
-		break
+			break
 	    else:
-		# if it was the last iteration, raise an exception
-		if (trial == 2):
-		    raise Exception('KMetaModes failed! Cannot initialise a set of unique modes after 3 tries... ',pindex)
-		# if selection of modes failed, reset records' indexes in partition records before next iteration
-		for i in indexes:
-		    partition_records[i].mode_id=-1
-		    partition_records[i].index=-1
+			# if it was the last iteration, raise an exception
+			if (trial == 2):
+			    raise Exception('KMetaModes failed! Cannot initialise a set of unique modes after 3 tries... ',pindex)
+			# if selection of modes failed, reset records' indexes in partition records before next iteration
+			for i in indexes:
+		    	partition_records[i].mode_id=-1
+		    	partition_records[i].index=-1
 	# if exception was not raised:
 	partition_moved = 1
 	yield (partition_records,partition_clusters,partition_moved)
@@ -420,18 +422,18 @@ def k_modes_partitioned(rdd, n_clusters, max_iter, similarity, seed = None):
 
     # On each partition do an iteration of k modes analysis, passing back the final clusters. Repeat until no points move
     for iter_count in range(max_iter):
-        print("Iteration ", iter_count)
-	# index is partition number
-	# iterator is to iterate all elements in the partition
+        print(("Iteration ", iter_count))
+        # index is partition number
+        # iterator is to iterate all elements in the partition
         rdd = rdd.mapPartitions(lambda it: iter_k_modes(it,similarity))
     
     new_clusters = []
     mode_indexes = []
     for partition_records,partition_clusters,partition_moved in rdd.collect():
-	new_clusters.append(partition_clusters)
-	partition_mode_indexes = []
-	for record in partition_records:
-	    mode_indexes.append(record.mode_id)
+        new_clusters.append(partition_clusters)
+        partition_mode_indexes = []
+        for record in partition_records:
+            mode_indexes.append(record.mode_id)
     return (new_clusters,mode_indexes)
 
 def select_random_metamodes(all_modes,n_clusters):
@@ -463,17 +465,17 @@ def select_random_metamodes(all_modes,n_clusters):
 
 def k_metamodes_local(all_modes, n_clusters, max_iter, similarity, seed = None):
     for trial in range(3):
-	metamodes,failed,indexes = select_random_metamodes(all_modes,n_clusters)
-	# if metamodes were sucessfully selected, break the loop
-	if (failed == 0):
-	    break
-	else:
-	    # if it was the last iteration, raise an exception
-	    if (trial == 2):
-	        raise Exception('KMetaModes failed! Cannot initialise a set of unique metamodes after 3 tries... ')
-	    # if selection of metamodes failed, reset modes' indexes in partition records before next iteration
-	    for i in indexes:
-	        all_modes[i].index=-1
+		metamodes,failed,indexes = select_random_metamodes(all_modes,n_clusters)
+		# if metamodes were sucessfully selected, break the loop
+		if (failed == 0):
+		    break
+		else:
+		    # if it was the last iteration, raise an exception
+		    if (trial == 2):
+		        raise Exception('KMetaModes failed! Cannot initialise a set of unique metamodes after 3 tries... ')
+		    # if selection of metamodes failed, reset modes' indexes in partition records before next iteration
+		    for i in indexes:
+		        all_modes[i].index=-1
 
     # do an iteration of k-modes analysis, passing back the final metamodes. Repeat until no points move
     moved = 1
@@ -483,12 +485,12 @@ def k_metamodes_local(all_modes, n_clusters, max_iter, similarity, seed = None):
 
         print("Iteration ", iter_count)
         iter_count +=1
-	iteration_start = time.time()
+        iteration_start = time.time()
         for mode in all_modes:
             metamodes, temp_move = mode.update_metamode(metamodes,similarity)
             moved += temp_move
 
-	print("Iteration ",iter_count-1, "finished within ",time.time()-iteration_start,", moved = ",moved)
+		print("Iteration ",iter_count-1, "finished within ",time.time()-iteration_start,", moved = ",moved)
 
         if (iter_count >= max_iter):
             break
@@ -502,17 +504,39 @@ class IncrementalPartitionedKMetaModes:
         K-modes clustering is performed on each partition of an rdd and the resulting clusters are collected to the driver node. 
         Local K-modes clustering is then performed on all modes returned from all partitions to yield a final set of modes.
 
+Example on how to run k-modes clustering on data:
+
+    		n_modes=36
+		partitions=10
+		max_iter=10
+	    	fraction = 50000 * partitions / (kmdata.count() * 1.0)
+	    	data = data.rdd.sample(False,fraction).toDF()
+	
+	    	method=IncrementalPartitionedKMetaModes(n_partitions = partitions, n_clusters = n_modes,max_dist_iter = max_iter,local_kmodes_iter = max_iter, similarity = "frequency", metamodessimilarity = "hamming")
+    	
+		cluster_metamodes = method.calculate_metamodes(kmdata)
+	
+	Now the metamodes can be used, for example, to find the distance from each original data record to all metamodes using one of the existing distance functions, for example:
+
+                def distance_to_all(record):
+    		    sum_distance = 0
+		    for diss in frequency_based_dissim(record, cluster_metamodes):
+			sum_distance += diss
+    		    drow = record.asDict()
+                    drow["distance"] = sum_distance
+                    return Row(**drow)
+                data_with_distances = data.repartition(partitions).rdd.map(lambda record: distance_to_all(record))
 
         """
         def __init__(self, n_partitions, partition_size, n_clusters, max_dist_iter, local_kmodes_iter, similarity="hamming", metamodessimilarity="hamming"):
 
             self.n_clusters = n_clusters
-	    self.n_partitions = n_partitions
-	    self.partition_size = partition_size
+            self.n_partitions = n_partitions
+	    	self.partition_size = partition_size
             self.max_dist_iter = max_dist_iter
             self.local_kmodes_iter = local_kmodes_iter
             self.similarity = similarity
-	    self.metamodessimilarity = metamodessimilarity
+	    	self.metamodessimilarity = metamodessimilarity
 
 #	def __add_index_column__(self,record_plus_index):
 #	    drow = record_plus_index[0].asDict()
@@ -527,40 +551,46 @@ class IncrementalPartitionedKMetaModes:
             """
 	    # check partitioning parameters
 	    if ((kmdata.count() // self.partition_size) < (self.n_partitions - 1)):
-		print("Warning: size x number of partitions is higher than the number of records in the data! Algorithm may fail due to empty partitions!")
+			print("Warning: size x number of partitions is higher than the number of records in the data! Algorithm may fail due to empty partitions!")
 	    if ((kmdata.count() // self.partition_size) > self.n_partitions):
-		print("Warning: size x number of partitions is much less than the number of records in the data! The last partition might be unproportionally big!")
+			print("Warning: size x number of partitions is much less than the number of records in the data! The last partition might be unproportionally big!")
 	    # repartition and convert to RDD
 	    data_rdd = kmdata.rdd.zipWithIndex().map(lambda (x,i): (i,x)).repartitionAndSortWithinPartitions(self.n_partitions,lambda x: x // self.partition_size, True).map(lambda (i,x): x)
 	    #print("Distribution into partitions: ",data_rdd.glom().collect())
 	    print("Number of partitions: ",data_rdd.getNumPartitions())
 	    #print("Records in each partition: ",data_rdd.glom().map(len).collect())
-            rdd = data_rdd.map(lambda x: k_modes_record(x))
+		rdd = data_rdd.map(lambda x: k_modes_record(x))
 	    print("Number of partitions after converting to k-modes-records: ",rdd.getNumPartitions())
 
-            # Calculate the modes for each partition and return the clusters and an indexed rdd.
+        # Calculate the modes for each partition and return the clusters and an indexed rdd.
 	    print("Starting parallel incremental k-modes...")
 	    start = time.time()
-            modes,self.mode_indexes = k_modes_partitioned(rdd,self.n_clusters,self.max_dist_iter,self.similarity)
+        modes,self.mode_indexes = k_modes_partitioned(rdd,self.n_clusters,self.max_dist_iter,self.similarity)
 	    print("Modes calculated within ",time.time()-start,". Starting calculation of metamodes...")
 
-            # Calculate the modes for the set of all modes
-            # 1) prepare rdd with modes from all partitions
-            self.all_modes = []
+        # Calculate the modes for the set of all modes
+        # 1) prepare rdd with modes from all partitions
+        self.all_modes = []
 	    print("Number of partitions: ",len(modes))
-            for one_partition_modes in modes:
-		print("Number of modes in partition: ",len(one_partition_modes))
-                for mode in one_partition_modes:
-                    self.all_modes.append(mode)
+        for one_partition_modes in modes:
+			print("Number of modes in partition: ",len(one_partition_modes))
+        	for mode in one_partition_modes:
+        		self.all_modes.append(mode)
 	    print("Total number of modes: ",len(self.all_modes))
 
-            # 2) run k-modes on single partition
-            self.metamodes = k_metamodes_local(self.all_modes,self.n_clusters,self.local_kmodes_iter, self.metamodessimilarity)
+        # 2) run k-modes on single partition
+        self.metamodes = k_metamodes_local(self.all_modes,self.n_clusters,self.local_kmodes_iter, self.metamodessimilarity)
 
-            return self.metamodes
+        return self.metamodes
 
 	def get_modes(self):
+	"""
+	returns all modes (not metamodes!) from all partitions
+    """
 	    return self.all_modes
 
 	def get_mode_indexes(self):
+	"""
+	returns a list with corresponding mode ID (which is unique) for each original record (not a metamode ID!)
+	"""
 	    return self.mode_indexes
