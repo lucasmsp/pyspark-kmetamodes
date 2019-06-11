@@ -2,6 +2,7 @@
 # License: MIT
 # Author: 'Andrey Sapegin, Hasso Plattner Institute' <andrey.sapegin@hpi.de> <andrey@sapegin.org>
 
+from __future__ import division
 from copy import deepcopy
 from collections import defaultdict
 import numpy as np
