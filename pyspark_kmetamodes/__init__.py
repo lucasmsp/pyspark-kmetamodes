@@ -255,8 +255,8 @@ def all_frequency_based_dissim_for_modes(mode, metamodes):
     # for each existing cluster metamode
     for metamode in metamodes:
         sum_dissim = 0
-        ##if metamode.freq is None:
-        ##    metamode.calculate_freq()
+        if metamode.freq is None:
+            metamode.calculate_freq()
         # for each attribute in the mode
         for i in range(len(mode.attrs)):
             X = mode.freq[i]
@@ -363,16 +363,39 @@ def iter_k_modes(iterator, similarity):
             partition_moved += temp_move
         yield (partition_records, partition_clusters, partition_moved)
 
+def hamming_dissim_records(record, records):
+    list_dissim = []
+    for record_from_records in records:
+        sum_dissim = 0
+        for elem1, elem2 in zip(record, record_from_records.record):
+            if (elem1 != elem2):
+                sum_dissim += 1
+        list_dissim.append(sum_dissim)
+    return list_dissim
 
-def select_random_modes(pindex, partition_records, n_modes):
+def get_unique_records_with_index(partition_records):
+    record_list = list(enumerate(partition_records))
+    uniq_record_list = []
+    indexes = []
+    for index,value in record_list:
+        if (len(uniq_record_list) > 0):
+            diss = hamming_dissim_records(value.record, uniq_record_list)
+            if (min(diss) == 0):
+		continue
+	uniq_record_list.append(value)
+	indexes.append(index)
+    return list(zip(indexes,uniq_record_list))
+
+def select_random_modes(pindex, partition_records, n_modes, uniq):
     i = 0
     failed = 0
     partition_clusters = []
     indexes = []
-    for index, value in random.sample(list(enumerate(partition_records)), n_modes):
-        indexes.append(index)
-        partition_records[index].mode_id = pindex * n_modes + i
-        partition_records[index].index = i
+    if (uniq):
+        record_list = get_unique_records_with_index(partition_records)
+    else:
+        record_list = list(enumerate(partition_records))
+    for index, value in random.sample(record_list, n_modes):
         # check if there is a mode with same counts already in modes:
         if (len(partition_clusters) > 0):
             diss = hamming_dissim(partition_records[index].record, partition_clusters)
@@ -380,6 +403,10 @@ def select_random_modes(pindex, partition_records, n_modes):
                 print(
                     "Warning! Two modes with distance between each other equals to 0 were randomly selected. KMetaModes can fail! Retrying random metamodes selection...")
                 failed = 1
+                break
+        indexes.append(index)
+        partition_records[index].mode_id = pindex * n_modes + i
+        partition_records[index].index = i
         partition_clusters.append(Mode(partition_records[index].record, partition_records[index].mode_id))
         i += 1
     return (partition_clusters, failed, indexes)
@@ -388,17 +415,20 @@ def select_random_modes(pindex, partition_records, n_modes):
 def partition_to_list(pindex, iterator, n_modes):
     #records
     partition_records = []
+    uniq = False
     for record in iterator:
         partition_records.append(record)
 
     #modes
     # try to select modes randomly 3 times
     for trial in range(3):
-        partition_clusters, failed, indexes = select_random_modes(pindex, partition_records, n_modes)
+        partition_clusters, failed, indexes = select_random_modes(pindex, partition_records, n_modes, uniq)
         # if modes were sucessfully selected, break the loop
         if (failed == 0):
             break
         else:
+	    if (trial == 1):
+		uniq = True
             # if it was the last iteration, raise an exception
             if (trial == 2):
                 raise Exception('KMetaModes failed! Cannot initialise a set of unique modes after 3 tries... ', pindex)
@@ -448,13 +478,29 @@ def k_modes_partitioned(rdd, n_clusters, max_iter, similarity, seed=None):
             mode_indexes.append(record.mode_id)
     return (new_clusters, mode_indexes)
 
+def get_unique_modes_with_index(all_modes):
+    mode_list = list(enumerate(all_modes))
+    uniq_mode_list = []
+    indexes = []
+    for index,mode in mode_list:
+        if (len(uniq_mode_list) > 0):
+            diss = all_frequency_based_dissim_for_modes(mode, uniq_mode_list)
+            if (min(diss) == 0):
+                continue
+        uniq_mode_list.append(mode)
+        indexes.append(index)
+    return list(zip(indexes,uniq_mode_list))
 
-def select_random_metamodes(all_modes, n_clusters):
+def select_random_metamodes(all_modes, n_clusters, uniq):
     i = 0
     failed = 0
     metamodes = []
     indexes = []
-    for index, value in random.sample(list(enumerate(all_modes)), n_clusters):
+    if (uniq):
+        modes_list = get_unique_modes_with_index(all_modes)
+    else:
+        modes_list = list(enumerate(all_modes))
+    for index, value in random.sample(modes_list, n_clusters):
         indexes.append(index)
         if (all_modes[index].nmembers == 0):
             print("Warning! Mode without members identified!")
@@ -479,12 +525,15 @@ def select_random_metamodes(all_modes, n_clusters):
 
 
 def k_metamodes_local(all_modes, n_clusters, max_iter, similarity, seed=None):
+    uniq = False
     for trial in range(3):
-        metamodes, failed, indexes = select_random_metamodes(all_modes, n_clusters)
+        metamodes, failed, indexes = select_random_metamodes(all_modes, n_clusters, uniq)
         # if metamodes were sucessfully selected, break the loop
         if (failed == 0):
             break
         else:
+	    if (trial == 1):
+		uniq = True
             # if it was the last iteration, raise an exception
             if (trial == 2):
                 raise Exception('KMetaModes failed! Cannot initialise a set of unique metamodes after 3 tries... ')
