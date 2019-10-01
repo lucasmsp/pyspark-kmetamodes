@@ -10,7 +10,7 @@ This module uses several different distance functions for k-modes:
 
 1) Hamming distance.
 2) Frequency-based dissimilarity proposed by He Z., Deng S., Xu X. in Improving K-Modes Algorithm Considering Frequencies of Attribute Values in Mode.
-3) My own (Andrey Sapegin) dissimilarity function, which is used for calculation of metamodes only. This distance function keeps track of and takes into account all frequencies of all unique values of all attributes in the cluster, and NOT only most frequent values that became the attributes of the mode/metamode. This work is planned to be published in the future. Preprint is available at https://arxiv.org/submit/2866146/preview.
+3) My own (Andrey Sapegin) dissimilarity function, which is used for calculation of metamodes only. This distance function keeps track of and takes into account all frequencies of all unique values of all attributes in the cluster, and NOT only most frequent values that became the attributes of the mode/metamode. This work is planned to be published in the future. Preprint is available at https://arxiv.org/abs/1909.13721.
 
 This package was originally based on the work of `Marissa Saunders <marissa.saunders@thinkbiganalytics.com>` (https://github.com/ThinkBigAnalytics/pyspark-distributed-kmodes). However, due to the fact that the original package contained several major issues leading to incorrect incremental k-modes implementation and seems to be not maintained for several years, it was decided to perform a major refactoring fixing these issues, adding new distance functions (besides the existing hamming distance), etc.
 
