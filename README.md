@@ -34,6 +34,10 @@ method=IncrementalPartitionedKMetaModes(n_partitions = partitions, partition_siz
 cluster_metamodes = method.calculate_metamodes(data)
 ```
 
+* Possible values for similarity are: "hamming" and "frequency"
+
+* Possible values for metamodessimilarity are: "hamming", "frequency" and "meta"
+
 Now the metamodes can be used, for example, to find the distance from each original data record to all metamodes using one of the existing distance functions:
 
 ```python
@@ -46,3 +50,9 @@ def distance_to_all(record):
 	return Row(**drow)
 data_with_distances = data.repartition(partitions).rdd.map(lambda record: distance_to_all(record))
 ```
+
+`method.get_modes()` will return you the list of modes (not metamodes!), i.e. all modes of all clusters in all data subsets (that were clustered individually).
+
+`method.get_mode_indexes()` will return you a list with corresponding mode ID (which is globally unique) for each original record.
+
+Thus, `data.withColumn("modeID", method.get_mode_indexes())` should add a column with mode ID to your original data.
