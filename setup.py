@@ -12,6 +12,6 @@ setup(name='pyspark_kmetamodes',
       url='https://github.com/asapegin/pyspark-kmetamodes',
       license='MIT',
       packages=['pyspark_kmetamodes'],
-      long_description=open('./README.rst').read(),
+      long_description=open('./README.md').read(),
       include_package_data=True,
       zip_safe=False)

@@ -73,7 +73,7 @@ class Metamode:
         if (self.nmembers == 0):
             print(
                 "Last member removed from metamode! This situation should never happen in incremental k-modes! Reason could be non-unique modes/metamodes or same distance from mode to two or more metamodes.")
-	    #fixed: print("This might happen since metamodes are checked to be unique using meta dissimilarity function, which may result in non-unique metamodes when using non-meta dissimilarity.")
+        #fixed: print("This might happen since metamodes are checked to be unique using meta dissimilarity function, which may result in non-unique metamodes when using non-meta dissimilarity.")
         for i in range(len(self.count)):
             # substract and merge mode count from metamode count
             self.count[i] = {k: self.count[i].get(k, 0) - mode.count[i].get(k, 0) for k in
@@ -382,10 +382,11 @@ def get_unique_records_with_index(partition_records):
         if (len(uniq_record_list) > 0):
             diss = hamming_dissim_records(value.record, uniq_record_list)
             if (min(diss) == 0):
-		continue
-	uniq_record_list.append(value)
-	indexes.append(index)
+                continue
+    uniq_record_list.append(value)
+    indexes.append(index)
     return list(zip(indexes,uniq_record_list))
+
 
 def select_random_modes(pindex, partition_records, n_modes, uniq):
     i = 0
@@ -428,8 +429,8 @@ def partition_to_list(pindex, iterator, n_modes):
         if (failed == 0):
             break
         else:
-	    if (trial == 1):
-		uniq = True
+            if (trial == 1):
+                uniq = True
             # if it was the last iteration, raise an exception
             if (trial == 2):
                 raise Exception('KMetaModes failed! Cannot initialise a set of unique modes after 3 tries... ', pindex)
@@ -516,14 +517,13 @@ def select_random_metamodes(all_modes, n_clusters, uniq, similarity):
         # check if there is a metamode with same counts already in metamodes:
         if (len(metamodes) > 0):
             if (similarity == "hamming"):
-        	diss = hamming_dissim(all_modes[index].attrs, metamodes)
-	    elif (similarity == "frequency"):
-        	diss = frequency_based_dissim(all_modes[index].attrs, metamodes)
-	    else:  # if (similarity == "meta"):
-		diss = all_frequency_based_dissim_for_modes(all_modes[index], metamodes)
+                diss = hamming_dissim(all_modes[index].attrs, metamodes)
+            elif (similarity == "frequency"):
+                diss = frequency_based_dissim(all_modes[index].attrs, metamodes)
+            else:  # if (similarity == "meta"):
+                diss = all_frequency_based_dissim_for_modes(all_modes[index], metamodes)
             if (min(diss) == 0):
-                print(
-                    "Warning! Two metamodes with distance between each other equals to 0 were randomly selected. KMetaModes can fail! Retrying random metamodes selection...")
+                print("Warning! Two metamodes with distance between each other equals to 0 were randomly selected. KMetaModes can fail! Retrying random metamodes selection...")
                 failed = 1
         metamodes.append(Metamode(all_modes[index]))
         i += 1
@@ -538,8 +538,8 @@ def k_metamodes_local(all_modes, n_clusters, max_iter, similarity, seed=None):
         if (failed == 0):
             break
         else:
-	    if (trial == 1):
-		uniq = True
+            if (trial == 1):
+                uniq = True
             # if it was the last iteration, raise an exception
             if (trial == 2):
                 raise Exception('KMetaModes failed! Cannot initialise a set of unique metamodes after 3 tries... ')
@@ -611,7 +611,7 @@ class IncrementalPartitionedKMetaModes:
         self.metamodessimilarity = metamodessimilarity
 
     def get_unique_modes_with_index_hamming(self, all_modes):
-	mode_list = list(enumerate(all_modes))
+        mode_list = list(enumerate(all_modes))
         uniq_mode_list = []
         indexes = []
         for index,mode in mode_list:
@@ -657,7 +657,7 @@ class IncrementalPartitionedKMetaModes:
                 self.all_modes.append(mode)
         print("Total number of modes: ", len(self.all_modes))
 
-	print("Number of unique modes (hamming): ", len(self.get_unique_modes_with_index_hamming(self.all_modes)))
+        print("Number of unique modes (hamming): ", len(self.get_unique_modes_with_index_hamming(self.all_modes)))
 
         # 2) run k-modes on single partition
         self.metamodes = k_metamodes_local(self.all_modes, self.n_clusters, self.local_kmodes_iter, self.metamodessimilarity)
