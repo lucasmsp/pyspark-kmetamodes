@@ -33,7 +33,7 @@ method=IncrementalPartitionedKMetaModes(n_partitions = partitions, partition_siz
     	
 cluster_metamodes = method.calculate_metamodes(data)
 modes = method.get_modes()
-mode_numbers = method.get_mode_indexes()
+mode_ids = method.get_mode_indexes()
 ```
 
 * Possible values for similarity are: "hamming" and "frequency"
