@@ -634,8 +634,8 @@ class IncrementalPartitionedKMetaModes:
             print(
                 "Warning: size x number of partitions is much less than the number of records in the data! The last partition might be unproportionally big!")
         # repartition and convert to RDD
-        data_rdd = kmdata.rdd.zipWithIndex().map(lambda (x, i): (i, x)).repartitionAndSortWithinPartitions(
-            self.n_partitions, lambda x: x // self.partition_size, True).map(lambda (i, x): x)
+        data_rdd = kmdata.rdd.zipWithIndex().map(lambda xi: (xi[1], xi[0])).repartitionAndSortWithinPartitions(
+            self.n_partitions, lambda x: x // self.partition_size, True).map(lambda ix: ix[1])
         #print("Distribution into partitions: ",data_rdd.glom().collect())
         print("Number of partitions: ", data_rdd.getNumPartitions())
         #print("Records in each partition: ",data_rdd.glom().map(len).collect())
