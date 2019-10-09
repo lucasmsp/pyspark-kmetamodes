@@ -32,6 +32,8 @@ data = data.rdd.sample(False,fraction).toDF()
 method=IncrementalPartitionedKMetaModes(n_partitions = partitions, partition_size = 50000, n_clusters = n_modes,max_dist_iter = max_iter,local_kmodes_iter = max_iter, similarity = "frequency", metamodessimilarity = "hamming")
     	
 cluster_metamodes = method.calculate_metamodes(data)
+modes = method.get_modes()
+mode_numbers = method.get_mode_indexes()
 ```
 
 * Possible values for similarity are: "hamming" and "frequency"
