@@ -26,8 +26,11 @@ This module has been developed and tested on Spark 2.3 and Python 3.
 n_modes=36
 partitions=10
 max_iter=10
-fraction = 50000 * partitions / (data.count() * 1.0)
-data = data.rdd.sample(False,fraction).toDF()
+psize = 50000
+# optionally select a subset of data:
+if data.count() > partitions * psize:
+	fraction = 50000 * partitions / (data.count() * 1.0)
+	data = data.rdd.sample(False,fraction).toDF()
 
 method=IncrementalPartitionedKMetaModes(n_partitions = partitions, partition_size = 50000, n_clusters = n_modes,max_dist_iter = max_iter,local_kmodes_iter = max_iter, similarity = "frequency", metamodessimilarity = "hamming")
     	
