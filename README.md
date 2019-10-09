@@ -38,7 +38,7 @@ mode_ids = method.get_mode_indexes()
 
 * Possible values for similarity are: "hamming" and "frequency"
 
-* Possible values for metamodessimilarity are: "hamming", "frequency" and "meta"
+* Possible values for metamodessimilarity are: "hamming", "frequency" and "meta" ("meta" can only be used if similarity = "frequency")
 
 Now the metamodes can be used, for example, to find the distance from each original data record to all metamodes using one of the existing distance functions:
 
