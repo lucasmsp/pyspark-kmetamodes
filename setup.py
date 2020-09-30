@@ -9,9 +9,9 @@ setup(name='pyspark_kmetamodes',
         'Intended Audience :: Science/Research',
         'Topic :: Scientific/Engineering :: Information Analysis'
       ],
-      url='https://github.com/asapegin/pyspark-kmetamodes',
+      url='https://github.com/lucasmsp/pyspark-kmetamodes',
       license='MIT',
-      packages=['pyspark_kmetamodes'],
+      packages=['kmetamodes'],
       long_description=open('./README.md').read(),
       include_package_data=True,
       zip_safe=False)
