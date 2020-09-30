@@ -32,12 +32,11 @@ kmodes = IncrementalPartitionedKMetaModes(n_clusters = n_modes, max_dist_iter = 
 
 pipeline = Pipeline(stages=[vectorizer, kmodes])
 
-model = pipeline.fit(df)  
-output = model.transform(df)
-clusters = model.clusterCenters()  # a python list of metamodes
+pipeline_model = pipeline.fit(df)  
+output = pipeline_model.transform(df)
 ```
 
-A sample is also available in [example](./example) folder.
+A complete source-code is also available in [example](./example) folder.
 
 ## Distance functions for k-modes: 
 
